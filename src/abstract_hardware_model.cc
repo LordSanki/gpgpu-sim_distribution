@@ -36,6 +36,8 @@
 #include "option_parser.h"
 #include <algorithm>
 
+static const char* INS[] = { "NO_OP", "ALU_OP", "SFU_OP",   "ALU_SFU_OP", "LOAD_OP", "STORE_OP", "BRANCH_OP", "BARRIER_OP", "MEMORY_BARRIER_OP", "CALL_OPS",  "RET_OPS"};
+
 unsigned mem_access_t::sm_next_access_uid = 0;   
 unsigned warp_inst_t::sm_next_uid = 0;
 
@@ -647,7 +649,7 @@ void simt_stack::print (FILE *fout) const
     }
 }
 
-void simt_stack::update( simt_mask_t &thread_done, addr_vector_t &next_pc, address_type recvg_pc, op_type next_inst_op,unsigned next_inst_size, address_type next_inst_pc )
+void simt_stack::update(dim3 ctaId, int warpId, simt_mask_t &thread_done, addr_vector_t &next_pc, address_type recvg_pc, op_type next_inst_op,unsigned next_inst_size, address_type next_inst_pc )
 {
     assert(m_stack.size() > 0);
 
@@ -675,13 +677,16 @@ void simt_stack::update( simt_mask_t &thread_done, addr_vector_t &next_pc, addre
             if ( top_active_mask.test(i) ) { // is this thread active?
                 if (thread_done.test(i)) {
                     top_active_mask.reset(i); // remove completed thread from active mask
+                    //printf(" Line 678: W%d nxt%d top%x tmp%x\n", warpId, next_pc[i], top_active_mask.to_ulong(), tmp_active_mask.to_ulong());
                 } else if (tmp_next_pc == null_pc) {
                     tmp_next_pc = next_pc[i];
                     tmp_active_mask.set(i);
                     top_active_mask.reset(i);
+                    //printf(" Line 683: W%d nxt%d top%x tmp%x\n", warpId, next_pc[i], top_active_mask.to_ulong(), tmp_active_mask.to_ulong());
                 } else if (tmp_next_pc == next_pc[i]) {
                     tmp_active_mask.set(i);
                     top_active_mask.reset(i);
+                    //printf(" Line 687: W%d nxt%d top%x tmp%x\n",warpId, next_pc[i], top_active_mask.to_ulong(), tmp_active_mask.to_ulong());
                 }
             }
         }
@@ -707,10 +712,12 @@ void simt_stack::update( simt_mask_t &thread_done, addr_vector_t &next_pc, addre
     		tmp_next_pc=not_taken_pc;
     		tmp_active_mask=divergent_paths[tmp_next_pc];
     		divergent_paths.erase(tmp_next_pc);
+        printf(" 715: T%d W%d %s pc%d msk%x\n",ctaId.x, warpId, INS[ptx_fetch_inst(tmp_next_pc)->op], tmp_next_pc, tmp_active_mask.to_ulong());
     	}else{
     		std::map<address_type,simt_mask_t>:: iterator it=divergent_paths.begin();
     		tmp_next_pc=it->first;
     		tmp_active_mask=divergent_paths[tmp_next_pc];
+        printf(" 720: T%d W%d %s pc%d msk%x\n",ctaId.x, warpId, INS[ptx_fetch_inst(tmp_next_pc)->op], tmp_next_pc, tmp_active_mask.to_ulong());
     		divergent_paths.erase(tmp_next_pc);
     	}
 
@@ -819,7 +826,7 @@ void core_t::updateSIMTStack(unsigned warpId, warp_inst_t * inst)
             next_pc.push_back( m_thread[wtid+i]->get_pc() );
         }
     }
-    m_simt_stack[warpId]->update(thread_done,next_pc,inst->reconvergence_pc, inst->op,inst->isize,inst->pc);
+    m_simt_stack[warpId]->update(m_thread[warpId]->get_ctaid(), warpId,thread_done,next_pc,inst->reconvergence_pc, inst->op,inst->isize,inst->pc);
 }
 
 //! Get the warp to be executed using the data taken form the SIMT stack
