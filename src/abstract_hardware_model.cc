@@ -26,7 +26,7 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-
+#include "capri.h"
 #include "abstract_hardware_model.h"
 #include "cuda-sim/memory.h"
 #include "cuda-sim/ptx_ir.h"
@@ -712,12 +712,14 @@ void simt_stack::update(dim3 ctaId, int warpId, simt_mask_t &thread_done, addr_v
     		tmp_next_pc=not_taken_pc;
     		tmp_active_mask=divergent_paths[tmp_next_pc];
     		divergent_paths.erase(tmp_next_pc);
-        printf(" 715: T%d W%d %s pc%d msk%x\n",ctaId.x, warpId, INS[ptx_fetch_inst(tmp_next_pc)->op], tmp_next_pc, tmp_active_mask.to_ulong());
+        CAPRI::Capri::getCapriObj()->store(CAPRI::TBID(ctaId.x,ctaId.y,ctaId.z),warpId,ptx_fetch_inst(tmp_next_pc)->op,tmp_next_pc,tmp_active_mask);
+        //printf(" 715: T%d W%d %s pc%d msk%x\n",ctaId.x, warpId, INS[ptx_fetch_inst(tmp_next_pc)->op], tmp_next_pc, tmp_active_mask.to_ulong());
     	}else{
     		std::map<address_type,simt_mask_t>:: iterator it=divergent_paths.begin();
     		tmp_next_pc=it->first;
     		tmp_active_mask=divergent_paths[tmp_next_pc];
-        printf(" 720: T%d W%d %s pc%d msk%x\n",ctaId.x, warpId, INS[ptx_fetch_inst(tmp_next_pc)->op], tmp_next_pc, tmp_active_mask.to_ulong());
+        CAPRI::Capri::getCapriObj()->store(CAPRI::TBID(ctaId.x,ctaId.y,ctaId.z),warpId,ptx_fetch_inst(tmp_next_pc)->op,tmp_next_pc,tmp_active_mask);
+        //printf(" 720: T%d W%d %s pc%d msk%x\n",ctaId.x, warpId, INS[ptx_fetch_inst(tmp_next_pc)->op], tmp_next_pc, tmp_active_mask.to_ulong());
     		divergent_paths.erase(tmp_next_pc);
     	}
 
