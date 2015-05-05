@@ -38,7 +38,6 @@
 
 #include <pthread.h>
 #include <semaphore.h>
-
 #define MAX(a,b) (((a)>(b))?(a):(b))
 
 
@@ -85,6 +84,7 @@ void *gpgpu_sim_thread_sequential(void*)
       sem_post(&g_sim_signal_finish);
    } while(!done);
    sem_post(&g_sim_signal_exit);
+
    return NULL;
 }
 
@@ -143,16 +143,19 @@ void *gpgpu_sim_thread_concurrent(void*)
             print_simulation_time();
             CAPRI::Capri::getCapriObj()->process();
             CAPRI::Capri::getCapriObj()->print_result();
+            CAPRI::Capri::releaseCapriObj();
         }
         pthread_mutex_lock(&g_sim_lock);
         g_sim_active = false;
         pthread_mutex_unlock(&g_sim_lock);
     } while( !g_sim_done );
+
     if(g_debug_execution >= 3) {
        printf("GPGPU-Sim: *** simulation thread exiting ***\n");
        fflush(stdout);
     }
     sem_post(&g_sim_signal_exit);
+
     return NULL;
 }
 
