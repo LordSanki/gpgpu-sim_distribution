@@ -27,7 +27,7 @@
 
 #include "gpgpusim_entrypoint.h"
 #include <stdio.h>
-
+#include "capri.h"
 #include "option_parser.h"
 #include "cuda-sim/cuda-sim.h"
 #include "cuda-sim/ptx_ir.h"
@@ -141,6 +141,8 @@ void *gpgpu_sim_thread_concurrent(void*)
         if(sim_cycles) {
             g_the_gpu->update_stats();
             print_simulation_time();
+            CAPRI::Capri::getCapriObj()->process();
+            CAPRI::Capri::getCapriObj()->print_result();
         }
         pthread_mutex_lock(&g_sim_lock);
         g_sim_active = false;
