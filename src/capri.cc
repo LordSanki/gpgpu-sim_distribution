@@ -36,16 +36,6 @@ static double capri_util_func(Capri::Measurements &m)
 
 Capri::Capri()
 {
-  /*
-  m_mispredictions = 0;
-  m_non_divergent_inst_count = 0;
-  m_adq_branches = 0;
-  m_inadq_branches = 0;
-  m_total_inst_count = 0;
-  m_tbc_util = 0;
-  m_capri_util = 0;
-  m_pdom_util = 0;
-  */
   m_currMeasurePtr = NULL;
 }
 
@@ -56,13 +46,16 @@ Capri::~Capri()
 void Capri::store(TBID tbid, int wid, int opcode, long pc, BitMask mask)
 {
     Trace::iterator it = m_trace.find(tbid);
+    // find threadblock in trace
     if(it == m_trace.end()){
       it = m_trace.insert( pair<TBID,ThreadBlock>(tbid, ThreadBlock()) ).first;
     }
     ThreadBlock &tblock = it->second;
+    // check if tblock has enough warps
     while((int)tblock.size() <= wid){
       tblock.push_back(Warp());
     }
+    // store the instruction in the warp stream
     Instruction ins;
     ins.op = (OpCodes)opcode;
     ins.pc = pc;
@@ -72,17 +65,22 @@ void Capri::store(TBID tbid, int wid, int opcode, long pc, BitMask mask)
 
 void Capri::process()
 {
+  // process each tblock seperately
   for(Trace::iterator itb = m_trace.begin(); itb != m_trace.end(); itb++){
+
     ThreadBlock &tblock = itb->second;
+    // find warp with least pc
     int wid = get_min_pc_wid(tblock);
     m_stack = SimdStack();
+    // initialize measuments for tblock
     m_measurements[itb->first] = Measurements();
     m_currMeasurePtr = &m_measurements[itb->first];
+    // loop while some warp has instruction in stream
     while(wid != -1){
       m_currMeasurePtr->m_total_inst_count++;
       Instruction curr = tblock[wid].front();
 
-      // updating top of stack
+      // if stack has some entry then instruction is divergent
       if(m_stack.empty() == false){
         // found a reconvergence point. Pop the top of stack
         // and update global counter
@@ -96,16 +94,18 @@ void Capri::process()
           m_currMeasurePtr->m_tbc_count += ( m_stack.top().tbc.count);
           m_currMeasurePtr->m_capri_count += ( m_stack.top().capri.count);
           m_stack.pop();
+          // if stack is empty the op is non divergent
           if(m_stack.empty()){
             m_currMeasurePtr->m_non_divergent_inst_count++;
           }
+          // update counters for tos branch
           else{
             m_stack.top().capri.count++;
             m_stack.top().tbc.count++;
             m_stack.top().pdom.count++;
           }
         }
-        // not a reconv point. increment counter
+        // not a reconv point. increment counter for tos
         else{
           m_stack.top().capri.count++;
           m_stack.top().tbc.count++;
@@ -113,6 +113,7 @@ void Capri::process()
         }
       }
       else{
+        // non divergent code
         m_currMeasurePtr->m_non_divergent_inst_count++;
       }
       // executing WCU and CAPT if BRANCH_OP encountered
@@ -121,6 +122,7 @@ void Capri::process()
         check_adequacy(curr, tblock);
       }
       else{
+        // remove instructions from warp stream as they are non divergent
         for(int w = 0; w < (int)tblock.size(); w++){
           if(tblock[w].empty()) continue;
           if(tblock[w].front().pc == curr.pc)
@@ -137,6 +139,7 @@ void Capri::check_adequacy( Instruction &curr, ThreadBlock &tblock)
 {
   int wcount=0;
   int mask_count[32] = {0};
+  // collect active masks for all warps
   for(int w=0; w<(int)tblock.size(); w++){
     if(tblock[w].front().pc == curr.pc){
       tblock[w].pop_front();
@@ -147,6 +150,7 @@ void Capri::check_adequacy( Instruction &curr, ThreadBlock &tblock)
     }
   }
 
+  // WCU simulator
   int taken_count = mask_count[0];
   int ntaken_count = mask_count[0];
   for(int m=0; m<32; m++){
@@ -158,16 +162,20 @@ void Capri::check_adequacy( Instruction &curr, ThreadBlock &tblock)
 
   ntaken_count = wcount - ntaken_count;
 
+  // special case of non divergent branch across all warps
   bool non_diverging_branch = true;
   for(int b=0; b<32; b++){
     if(mask_count[b] != wcount)
       non_diverging_branch = false;
   }
+
+  // find compaction factor based on WCU result
   double compact_factor = taken_count+ntaken_count;
   if(compact_factor > 0.0)
     compact_factor = wcount/compact_factor;
   else
     compact_factor = 1;
+
   // if capt predicts adq
   if(m_capt(curr.pc) ){
     // check if it was actually adq
@@ -199,11 +207,13 @@ void Capri::check_adequacy( Instruction &curr, ThreadBlock &tblock)
       m_currMeasurePtr->m_adq_branches++;
     }
     else{
+      // branch is actually inadeq
       m_currMeasurePtr->m_inadq_branches++;
       m_capt(curr.pc, false);
     }
   }
 
+  // special case of non divergent branch
   if(non_diverging_branch){
     m_stack.top().capri.factor = 1.0;
     m_stack.top().pdom.factor = 1.0;
